@@ -1,0 +1,24 @@
+{
+  "name": "@rooh/admin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "start": "next start --port 3001",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@rooh/database": "workspace:*",
+    "@prisma/client": "6.19.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.2",
+    "bcryptjs": "^3.0.2",
+    "googleapis": "^173.0.0",
+    "lucide-react": "^1.18.0",
+    "next": "16.2.9",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "zod": "^4.1.12"
+  }
+}
