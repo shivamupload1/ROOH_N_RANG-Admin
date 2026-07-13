@@ -3,6 +3,18 @@ import { adminLoginSchema } from "@/lib/validators";
 import { prisma } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
 
+function websiteLoginUrl(error: "credentials" | "access") {
+  const fallback = process.env.NODE_ENV === "production"
+    ? "https://rooh-n-rang.vercel.app"
+    : "http://localhost:3000";
+  const websiteUrl = process.env.WEBSITE_URL || process.env.NEXT_PUBLIC_WEBSITE_URL || fallback;
+  const destination = new URL("/main.html", websiteUrl);
+
+  destination.searchParams.set("login", error);
+  destination.hash = "login";
+  return destination;
+}
+
 export async function POST(request: Request) {
   const formData = await request.formData();
   const parsed = adminLoginSchema.safeParse({
@@ -11,14 +23,14 @@ export async function POST(request: Request) {
   });
 
   if (!parsed.success) {
-    return NextResponse.redirect(new URL("/admin/login?error=credentials", request.url), 303);
+    return NextResponse.redirect(websiteLoginUrl("credentials"), 303);
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error || !data.user) {
-    return NextResponse.redirect(new URL("/admin/login?error=credentials", request.url), 303);
+    return NextResponse.redirect(websiteLoginUrl("credentials"), 303);
   }
 
   const admin = await prisma.user.findFirst({
@@ -34,7 +46,7 @@ export async function POST(request: Request) {
 
   if (!admin) {
     await supabase.auth.signOut();
-    return NextResponse.redirect(new URL("/admin/login?error=access", request.url), 303);
+    return NextResponse.redirect(websiteLoginUrl("access"), 303);
   }
 
   if (!admin.authUserId) {
