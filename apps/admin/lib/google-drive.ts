@@ -46,7 +46,8 @@ function appUrl() {
 }
 
 function callbackUrl(origin?: string) {
-  const baseUrl = origin || normalizeEnvValue(process.env.GOOGLE_REDIRECT_URI) || `${appUrl()}/api/google/callback`;
+  const configuredRedirect = normalizeEnvValue(process.env.GOOGLE_REDIRECT_URI);
+  const baseUrl = configuredRedirect || origin || `${appUrl()}/api/google/callback`;
 
   if (baseUrl.endsWith("/api/google/callback")) {
     return baseUrl;
