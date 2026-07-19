@@ -107,6 +107,16 @@ function googleErrorMessage(error: unknown) {
   return "";
 }
 
+function oauthTokenExchangeMessage(error: unknown) {
+  const message = googleErrorMessage(error);
+
+  if (/invalid_client/i.test(message)) {
+    return "Google OAuth Client ID and Client Secret do not match. Update the matching Production credentials in Vercel, then deploy again.";
+  }
+
+  return message || "Google OAuth token exchange failed.";
+}
+
 function folderAccessMessage(error: unknown) {
   const message = googleErrorMessage(error);
 
@@ -217,7 +227,9 @@ export function getAuthUrl(driveAccountId: string, origin?: string) {
 export async function handleOAuthCallback(code: string, stateValue: string, origin?: string) {
   const state = decodeState(stateValue);
   const oauth2Client = createOAuthClient(origin);
-  const { tokens } = await oauth2Client.getToken(code);
+  const { tokens } = await oauth2Client.getToken(code).catch((error: unknown) => {
+    throw new Error(oauthTokenExchangeMessage(error));
+  });
   oauth2Client.setCredentials(tokens);
 
   const oauth2 = google.oauth2({ version: "v2", auth: oauth2Client });
