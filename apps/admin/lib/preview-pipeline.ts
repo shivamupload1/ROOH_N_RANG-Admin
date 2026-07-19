@@ -21,12 +21,13 @@ async function ensureBucket() {
   return supabase;
 }
 
-export async function processPreviewBatch(limit = 4) {
-  const take = Math.max(1, Math.min(limit, 10));
+export async function processPreviewBatch(limit = 4, eventId?: string) {
+  const take = Math.max(1, Math.min(limit, 25));
   const mediaFiles = await prisma.mediaFile.findMany({
     where: {
       mediaType: "PHOTO",
       previewStatus: PreviewStatus.PENDING,
+      eventId,
       driveAccount: { status: "CONNECTED" }
     },
     orderBy: { createdAt: "asc" },

@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { DriveAccountStatus, MediaType } from "@prisma/client";
+import { DriveAccountStatus, MediaType, PreviewStatus } from "@prisma/client";
 import { google } from "googleapis";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
@@ -243,6 +243,17 @@ export async function handleOAuthCallback(code: string, stateValue: string, orig
       encryptedRefreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : undefined,
       tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       status: DriveAccountStatus.CONNECTED
+    }
+  });
+
+  await prisma.mediaFile.updateMany({
+    where: {
+      driveAccountId: state.driveAccountId,
+      previewStatus: PreviewStatus.FAILED
+    },
+    data: {
+      previewStatus: PreviewStatus.PENDING,
+      previewError: null
     }
   });
 

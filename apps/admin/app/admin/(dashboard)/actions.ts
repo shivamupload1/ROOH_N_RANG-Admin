@@ -18,6 +18,7 @@ import {
   websiteContentSchema
 } from "@/lib/validators";
 import { createFolder, importFilesFromFolder, syncEventGalleryFromDrive } from "@/lib/google-drive";
+import { processPreviewBatch } from "@/lib/preview-pipeline";
 
 export async function logoutAction() {
   await clearAdminSession();
@@ -369,6 +370,7 @@ export async function syncEventDriveGalleryAction(id: string) {
 
   try {
     await syncEventGalleryFromDrive(id);
+    await processPreviewBatch(8, id).catch(() => null);
   } catch {
     redirect(eventDriveRedirectPath(id, { driveError: "sync-failed" }));
   }
@@ -491,6 +493,7 @@ export async function syncClientGalleryFromDriveAction(clientId: string, formDat
 
   try {
     await syncEventGalleryFromDrive(event.id);
+    await processPreviewBatch(8, event.id).catch(() => null);
   } catch {
     redirect(clientWorkspaceRedirectPath(clientId, { error: "gallery-sync" }));
   }
