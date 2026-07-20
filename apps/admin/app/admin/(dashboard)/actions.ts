@@ -448,7 +448,7 @@ export async function upsertClientGalleryAction(clientId: string, formData: Form
   revalidatePath("/admin/clients");
   revalidatePath(`/admin/clients/${clientId}`);
   revalidatePath("/admin/events");
-  redirect(clientWorkspaceRedirectPath(clientId, { setup: "gallery-saved" }));
+  redirect(clientWorkspaceRedirectPath(clientId, { setup: parsed.pin ? "gallery-pin-saved" : "gallery-saved" }));
 }
 
 export async function createClientGalleryFolderAction(clientId: string, formData: FormData) {
@@ -528,8 +528,10 @@ export async function updateClientGalleryCoverAction(clientId: string, formData:
   await requireAdminSession();
   const eventId = String(formData.get("eventId") || "").trim();
   const mediaFileId = String(formData.get("mediaFileId") || "").trim();
-  const positionX = Math.min(100, Math.max(0, Number(formData.get("positionX") || 50)));
-  const positionY = Math.min(100, Math.max(0, Number(formData.get("positionY") || 50)));
+  const desktopPositionX = Math.min(100, Math.max(0, Number(formData.get("desktopPositionX") || 50)));
+  const desktopPositionY = Math.min(100, Math.max(0, Number(formData.get("desktopPositionY") || 50)));
+  const mobilePositionX = Math.min(100, Math.max(0, Number(formData.get("mobilePositionX") || 50)));
+  const mobilePositionY = Math.min(100, Math.max(0, Number(formData.get("mobilePositionY") || 50)));
 
   if (!eventId) {
     redirect(clientWorkspaceRedirectPath(clientId, { error: "gallery-first" }));
@@ -552,11 +554,23 @@ export async function updateClientGalleryCoverAction(clientId: string, formData:
     await prisma.settings.upsert({
       where: { key: eventCoverKey(eventId) },
       update: {
-        value: { mediaFileId, positionX, positionY }
+        value: {
+          mediaFileId,
+          desktopPositionX,
+          desktopPositionY,
+          mobilePositionX,
+          mobilePositionY
+        }
       },
       create: {
         key: eventCoverKey(eventId),
-        value: { mediaFileId, positionX, positionY }
+        value: {
+          mediaFileId,
+          desktopPositionX,
+          desktopPositionY,
+          mobilePositionX,
+          mobilePositionY
+        }
       }
     });
   }

@@ -26,6 +26,7 @@ const setupMessages: Record<string, string> = {
   "drive-saved": "Google Drive setup saved.",
   "folder-created": "Client folder create ho gaya aur root folder ID update ho gayi.",
   "gallery-saved": "Gallery setup saved.",
+  "gallery-pin-saved": "Gallery setup and the new PIN were saved.",
   "gallery-folder-created": "Gallery folder create ho gaya.",
   "gallery-synced": "Gallery subfolders aur photos Google Drive se sync ho gaye.",
   "cover-saved": "Cover photo updated."
@@ -56,11 +57,21 @@ function dateInputValue(date?: Date | null) {
 
 function expiryDefault(date?: Date | null) {
   if (!date) {
-    return "30";
+    return "none";
   }
 
   const days = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   return days <= 0 ? "none" : days <= 45 ? "30" : "90";
+}
+
+function expiryStatus(date?: Date | null) {
+  if (!date) return "No expiry";
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
 }
 
 export default async function EditClientPage({
@@ -292,7 +303,7 @@ export default async function EditClientPage({
                 <SelectField
                   label="Gallery expiry"
                   name="expiryOption"
-                  defaultValue={expiryDefault(primaryEvent?.expiryDate)}
+                  defaultValue={primaryEvent ? expiryDefault(primaryEvent.expiryDate) : "30"}
                   options={[
                     { label: "30 days from save", value: "30" },
                     { label: "90 days from save", value: "90" },
@@ -301,6 +312,11 @@ export default async function EditClientPage({
                 />
                 <FormField label="Gallery folder ID" name="driveFolderId" defaultValue={primaryEvent?.driveFolderId || ""} placeholder="Paste event folder ID" />
               </div>
+              {primaryEvent?.accessMode === "PIN" ? (
+                <p className="text-xs leading-5 text-ink/55">
+                  The current PIN stays encrypted and is never displayed. Leave this field blank to keep it, or enter four new digits to replace it.
+                </p>
+              ) : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <CheckboxField
                   label="Published"
@@ -320,6 +336,27 @@ export default async function EditClientPage({
                 Save Gallery Setup
               </button>
             </form>
+
+            {primaryEvent ? (
+              <dl className="mt-5 grid gap-px overflow-hidden rounded-md border border-ink/10 bg-ink/10 text-sm sm:grid-cols-4">
+                <div className="bg-white px-4 py-3">
+                  <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink/45">Access</dt>
+                  <dd className="mt-1 font-semibold text-ink">{primaryEvent.accessMode === "PIN" ? "Private + PIN" : "Public"}</dd>
+                </div>
+                <div className="bg-white px-4 py-3">
+                  <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink/45">Expiry</dt>
+                  <dd className="mt-1 font-semibold text-ink">{expiryStatus(primaryEvent.expiryDate)}</dd>
+                </div>
+                <div className="bg-white px-4 py-3">
+                  <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink/45">Gallery</dt>
+                  <dd className="mt-1 font-semibold text-ink">{primaryEvent.isPublished ? "Published" : "Draft"}</dd>
+                </div>
+                <div className="bg-white px-4 py-3">
+                  <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink/45">Downloads</dt>
+                  <dd className="mt-1 font-semibold text-ink">{primaryEvent.downloadAllowed ? "Enabled" : "Disabled"}</dd>
+                </div>
+              </dl>
+            ) : null}
 
             {galleryLink ? (
               <div className="mt-5 rounded-lg border border-ink/10 bg-ivory/60 p-4">
@@ -447,8 +484,10 @@ export default async function EditClientPage({
                 eventSlug={primaryEvent.slug}
                 mediaOptions={coverMediaOptions}
                 initialMediaId={currentCoverMedia?.id || ""}
-                initialPositionX={cover.positionX}
-                initialPositionY={cover.positionY}
+                initialDesktopPositionX={cover.desktopPositionX}
+                initialDesktopPositionY={cover.desktopPositionY}
+                initialMobilePositionX={cover.mobilePositionX}
+                initialMobilePositionY={cover.mobilePositionY}
               />
             )}
           </div>
