@@ -219,6 +219,7 @@ export function getAuthUrl(driveAccountId: string, origin?: string) {
   return oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: true,
     scope: DRIVE_SCOPES,
     state: encodeState({ driveAccountId, ts: Date.now() })
   });
@@ -288,25 +289,35 @@ async function authorizedClient(driveAccountId: string) {
   try {
     const token = await oauth2Client.getAccessToken();
     accessToken = token.token || currentAccessToken;
+    const refreshedExpiry = oauth2Client.credentials.expiry_date;
 
-    if (token.token && token.token !== currentAccessToken) {
+    if (
+      (token.token && token.token !== currentAccessToken) ||
+      (refreshedExpiry && refreshedExpiry !== account.tokenExpiry?.getTime()) ||
+      account.status !== DriveAccountStatus.CONNECTED
+    ) {
       await prisma.driveAccount.update({
         where: { id: driveAccountId },
         data: {
-          encryptedAccessToken: encrypt(token.token),
+          encryptedAccessToken: token.token ? encrypt(token.token) : undefined,
+          tokenExpiry: refreshedExpiry ? new Date(refreshedExpiry) : undefined,
           status: DriveAccountStatus.CONNECTED
         }
       });
     }
-  } catch {
-    await prisma.driveAccount.update({
-      where: { id: driveAccountId },
-      data: {
-        status: account.tokenExpiry && account.tokenExpiry.getTime() < Date.now() ? DriveAccountStatus.EXPIRED : DriveAccountStatus.REVOKED
-      }
-    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    const credentialsRejected = message.includes("invalid_grant") || message.includes("invalid_client") || message.includes("unauthorized_client");
 
-    throw new Error("Google Drive connection expired or was revoked. Reconnect the account and try again.");
+    if (credentialsRejected) {
+      await prisma.driveAccount.update({
+        where: { id: driveAccountId },
+        data: { status: DriveAccountStatus.REVOKED }
+      });
+      throw new Error("Google Drive permission was revoked. Reconnect this account once, then automatic renewal will resume.");
+    }
+
+    throw new Error("Google Drive is temporarily unavailable. The saved connection is still active; please try again.");
   }
 
   if (!accessToken) {

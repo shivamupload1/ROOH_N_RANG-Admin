@@ -9,6 +9,7 @@ import { eventCoverKey } from "@/lib/event-cover";
 import { generateSlug, ensureUniqueSlug } from "@/lib/slug";
 import {
   albumSchema,
+  clientGallerySchema,
   clientSchema,
   driveAccountSchema,
   eventSchema,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/validators";
 import { createFolder, importFilesFromFolder, syncEventGalleryFromDrive } from "@/lib/google-drive";
 import { processPreviewBatch } from "@/lib/preview-pipeline";
+import { ensureGalleryShareCode } from "@/lib/gallery-share";
 
 export async function logoutAction() {
   await clearAdminSession();
@@ -395,17 +397,29 @@ export async function upsertClientGalleryAction(clientId: string, formData: Form
     redirect(clientWorkspaceRedirectPath(clientId, { error: "drive-first" }));
   }
 
-  const parsed = eventSchema.parse({
+  const parsed = clientGallerySchema.parse({
     ...Object.fromEntries(formData),
     clientId,
     driveAccountId
   });
+  const existingEvent = eventId
+    ? await prisma.event.findFirst({ where: { id: eventId, clientId }, select: { id: true, pinHash: true } })
+    : null;
+
+  if (eventId && !existingEvent) {
+    redirect(clientWorkspaceRedirectPath(clientId, { error: "gallery-missing" }));
+  }
+
+  if (!parsed.pin && !existingEvent) {
+    redirect(clientWorkspaceRedirectPath(clientId, { error: "gallery-pin" }));
+  }
+
   const slug = await eventSlug({
     name: parsed.name,
     slug: parsed.slug,
     currentEventId: eventId || undefined
   });
-  const pinHash = await hashSecret(parsed.pin);
+  const pinHash = parsed.pin ? await hashSecret(parsed.pin) : existingEvent!.pinHash;
   const data = {
     clientId,
     driveAccountId,
@@ -422,14 +436,14 @@ export async function upsertClientGalleryAction(clientId: string, formData: Form
     isPublished: parsed.isPublished === "on"
   };
 
-  if (eventId) {
-    await prisma.event.update({
+  const savedEvent = eventId
+    ? await prisma.event.update({
       where: { id: eventId },
       data
-    });
-  } else {
-    await prisma.event.create({ data });
-  }
+    })
+    : await prisma.event.create({ data });
+
+  await ensureGalleryShareCode(savedEvent.id);
 
   revalidatePath("/admin/clients");
   revalidatePath(`/admin/clients/${clientId}`);

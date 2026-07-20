@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import { eventCoverKey, parseEventCoverMediaId } from "@/lib/event-cover";
 import { listFiles } from "@/lib/google-drive";
 import { getGalleryDefaults } from "@/lib/site-content";
+import { buildGallerySharePath, buildGalleryShareUrl, getGalleryShareCode } from "@/lib/gallery-share";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
@@ -38,7 +39,9 @@ const errorMessages: Record<string, string> = {
   "gallery-first": "Pehle gallery setup save karo.",
   "gallery-folder-create": "Gallery folder create nahi ho paaya. Root folder aur Drive connection check karo.",
   "gallery-sync": "Gallery sync fail hua. Folder access aur Google connection dobara check karo.",
-  "event-folder": "Gallery sync se pehle event folder ID save ya create karo."
+  "event-folder": "Gallery sync se pehle event folder ID save ya create karo.",
+  "gallery-missing": "Gallery record nahi mila. Page refresh karke dobara save karo.",
+  "gallery-pin": "Nayi private gallery ke liye 4 digit PIN set karo."
 };
 
 const accountTypeOptions = [
@@ -58,14 +61,6 @@ function expiryDefault(date?: Date | null) {
 
   const days = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   return days <= 0 ? "none" : days <= 45 ? "30" : "90";
-}
-
-function publicGalleryLink(domain: string, slug?: string | null) {
-  if (!slug) {
-    return "";
-  }
-
-  return `${domain.replace(/\/$/, "")}/gallery/${slug}`;
 }
 
 export default async function EditClientPage({
@@ -104,7 +99,7 @@ export default async function EditClientPage({
   const driveAccount = client.driveAccounts[0] || null;
   const primaryEvent = client.events[0] || null;
   const additionalEvents = client.events.slice(1);
-  const [coverRecord, coverMediaOptions] = await Promise.all([
+  const [coverRecord, coverMediaOptions, galleryShareCode] = await Promise.all([
     primaryEvent
       ? prisma.settings.findUnique({
           where: { key: eventCoverKey(primaryEvent.id) },
@@ -117,7 +112,8 @@ export default async function EditClientPage({
           orderBy: [{ isFeatured: "desc" }, { createdAt: "asc" }],
           take: 80
         })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    primaryEvent ? getGalleryShareCode(primaryEvent.id) : Promise.resolve(null)
   ]);
 
   const coverMediaId = parseEventCoverMediaId(coverRecord?.value);
@@ -134,7 +130,12 @@ export default async function EditClientPage({
   const eventSubfolders = eventFolderPreview.filter((item) => item.mimeType === FOLDER_MIME);
   const setupMessage = setup ? setupMessages[setup] : "";
   const errorMessage = error ? errorMessages[error] : "";
-  const galleryLink = publicGalleryLink(galleryDefaults.publicDomain, primaryEvent?.slug);
+  const galleryLink = primaryEvent && galleryShareCode
+    ? buildGalleryShareUrl(
+        galleryDefaults.publicDomain,
+        buildGallerySharePath({ clientName: client.name, eventDate: primaryEvent.eventDate, shareCode: galleryShareCode })
+      )
+    : "";
 
   return (
     <div className="space-y-6">
@@ -182,6 +183,11 @@ export default async function EditClientPage({
                 <p className="mt-2 text-sm leading-6 text-ink/60">
                   Client ka Google account, root folder ID, aur custom folder create yahin manage karo.
                 </p>
+                {driveAccount?.status === "CONNECTED" ? (
+                  <p className="mt-2 text-xs font-medium text-olive">
+                    Connected once. Access renews automatically; reconnect only if Google permission is revoked.
+                  </p>
+                ) : null}
               </div>
               {driveAccount ? (
                 <Link
@@ -271,7 +277,7 @@ export default async function EditClientPage({
                   ]}
                 />
                 <FormField
-                  label="4 digit PIN"
+                  label={primaryEvent ? "New 4 digit PIN (optional)" : "4 digit PIN"}
                   name="pin"
                   type="password"
                   inputMode="numeric"
@@ -280,7 +286,7 @@ export default async function EditClientPage({
                   maxLength={4}
                   defaultValue=""
                   placeholder="1234"
-                  required
+                  required={!primaryEvent}
                 />
                 <SelectField
                   label="Gallery expiry"
@@ -321,6 +327,10 @@ export default async function EditClientPage({
                   {galleryLink}
                 </Link>
               </div>
+            ) : primaryEvent ? (
+              <p className="mt-5 rounded-lg border border-ink/10 bg-ivory/60 p-4 text-sm text-ink/60">
+                Save Gallery Setup once to generate this client&apos;s permanent private link.
+              </p>
             ) : null}
 
             {primaryEvent ? (

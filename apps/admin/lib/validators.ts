@@ -51,6 +51,10 @@ export const eventSchema = z.object({
   isPublished: z.enum(["on"]).optional()
 });
 
+export const clientGallerySchema = eventSchema.extend({
+  pin: z.union([pinSchema, z.literal("")])
+});
+
 export const albumSchema = z.object({
   eventId: z.string().min(1, "Choose an event."),
   name: z.string().trim().min(2, "Enter the album name."),
