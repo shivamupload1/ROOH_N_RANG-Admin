@@ -372,7 +372,7 @@ export async function syncEventDriveGalleryAction(id: string) {
 
   try {
     await syncEventGalleryFromDrive(id);
-    await processPreviewBatch(8, id).catch(() => null);
+    await processPreviewBatch(20, id).catch(() => null);
   } catch {
     redirect(eventDriveRedirectPath(id, { driveError: "sync-failed" }));
   }
@@ -507,7 +507,7 @@ export async function syncClientGalleryFromDriveAction(clientId: string, formDat
 
   try {
     await syncEventGalleryFromDrive(event.id);
-    await processPreviewBatch(8, event.id).catch(() => null);
+    await processPreviewBatch(20, event.id).catch(() => null);
   } catch {
     redirect(clientWorkspaceRedirectPath(clientId, { error: "gallery-sync" }));
   }
@@ -528,6 +528,8 @@ export async function updateClientGalleryCoverAction(clientId: string, formData:
   await requireAdminSession();
   const eventId = String(formData.get("eventId") || "").trim();
   const mediaFileId = String(formData.get("mediaFileId") || "").trim();
+  const positionX = Math.min(100, Math.max(0, Number(formData.get("positionX") || 50)));
+  const positionY = Math.min(100, Math.max(0, Number(formData.get("positionY") || 50)));
 
   if (!eventId) {
     redirect(clientWorkspaceRedirectPath(clientId, { error: "gallery-first" }));
@@ -538,14 +540,23 @@ export async function updateClientGalleryCoverAction(clientId: string, formData:
       where: { key: eventCoverKey(eventId) }
     });
   } else {
+    const coverMedia = await prisma.mediaFile.findFirst({
+      where: { id: mediaFileId, eventId },
+      select: { id: true }
+    });
+
+    if (!coverMedia) {
+      redirect(clientWorkspaceRedirectPath(clientId, { error: "cover-missing" }));
+    }
+
     await prisma.settings.upsert({
       where: { key: eventCoverKey(eventId) },
       update: {
-        value: { mediaFileId }
+        value: { mediaFileId, positionX, positionY }
       },
       create: {
         key: eventCoverKey(eventId),
-        value: { mediaFileId }
+        value: { mediaFileId, positionX, positionY }
       }
     });
   }

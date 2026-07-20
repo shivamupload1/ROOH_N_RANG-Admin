@@ -61,7 +61,7 @@ export async function processPreviewBatch(limit = 4, eventId?: string) {
         fileId: mediaFile.driveFileId,
         thumbnailUrl: highResolutionThumbnail,
         preferThumbnail: Boolean(highResolutionThumbnail),
-        fallbackToMedia: !highResolutionThumbnail
+        fallbackToMedia: true
       });
       const data = Buffer.from(await source.arrayBuffer());
       const contentType = source.headers.get("content-type") || "image/jpeg";

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, FolderPlus, Link as LinkIcon, RefreshCw, Save } from "lucide-react";
@@ -7,14 +6,14 @@ import {
   createClientRootFolderAction,
   syncClientGalleryFromDriveAction,
   updateClientAction,
-  updateClientGalleryCoverAction,
   upsertClientDriveAccountAction,
   upsertClientGalleryAction
 } from "@/app/admin/(dashboard)/actions";
 import { CheckboxField, SelectField, TextareaField } from "@/components/admin/form-controls";
+import { CoverPhotoEditor } from "@/components/admin/cover-photo-editor";
 import { FormField } from "@/components/admin/form-field";
 import { prisma } from "@/lib/db";
-import { eventCoverKey, parseEventCoverMediaId } from "@/lib/event-cover";
+import { eventCoverKey, parseEventCover } from "@/lib/event-cover";
 import { listFiles } from "@/lib/google-drive";
 import { getGalleryDefaults } from "@/lib/site-content";
 import { buildGallerySharePath, buildGalleryShareUrl, getGalleryShareCode } from "@/lib/gallery-share";
@@ -41,7 +40,8 @@ const errorMessages: Record<string, string> = {
   "gallery-sync": "Gallery sync fail hua. Folder access aur Google connection dobara check karo.",
   "event-folder": "Gallery sync se pehle event folder ID save ya create karo.",
   "gallery-missing": "Gallery record nahi mila. Page refresh karke dobara save karo.",
-  "gallery-pin": "Nayi private gallery ke liye 4 digit PIN set karo."
+  "gallery-pin": "Nayi private gallery ke liye 4 digit PIN set karo.",
+  "cover-missing": "Selected cover photo current gallery mein nahi mili. Photos sync karke dobara choose karo."
 };
 
 const accountTypeOptions = [
@@ -108,15 +108,16 @@ export default async function EditClientPage({
       : Promise.resolve(null),
     primaryEvent
       ? prisma.mediaFile.findMany({
-          where: { eventId: primaryEvent.id, mediaType: "PHOTO" },
+          where: { eventId: primaryEvent.id, driveAccountId: primaryEvent.driveAccountId, mediaType: "PHOTO" },
           orderBy: [{ isFeatured: "desc" }, { createdAt: "asc" }],
-          take: 80
+          take: 300
         })
       : Promise.resolve([]),
     primaryEvent ? getGalleryShareCode(primaryEvent.id) : Promise.resolve(null)
   ]);
 
-  const coverMediaId = parseEventCoverMediaId(coverRecord?.value);
+  const cover = parseEventCover(coverRecord?.value);
+  const coverMediaId = cover.mediaFileId;
   const currentCoverMedia = coverMediaOptions.find((media) => media.id === coverMediaId) || null;
   const rootPreview =
     driveAccount?.status === "CONNECTED" && driveAccount.rootFolderId
@@ -440,39 +441,15 @@ export default async function EditClientPage({
             ) : coverMediaOptions.length === 0 ? (
               <p className="mt-4 rounded-md bg-ivory px-4 py-3 text-sm text-ink/60">Photos sync hone ke baad yahan cover select kar paoge.</p>
             ) : (
-              <>
-                {currentCoverMedia ? (
-                  <div className="mt-4 overflow-hidden rounded-lg border border-ink/10">
-                    <Image
-                      src={`/api/media/${currentCoverMedia.id}`}
-                      alt={currentCoverMedia.fileName}
-                      width={currentCoverMedia.width || 1600}
-                      height={currentCoverMedia.height || 900}
-                      unoptimized
-                      sizes="(min-width: 1024px) 40vw, 100vw"
-                      className="block h-56 w-full object-cover"
-                    />
-                  </div>
-                ) : null}
-
-                <form action={updateClientGalleryCoverAction.bind(null, client.id)} className="mt-4 grid gap-4">
-                  <input type="hidden" name="eventId" value={primaryEvent.id} />
-                  <input type="hidden" name="eventSlug" value={primaryEvent.slug} />
-                  <SelectField
-                    label="Cover photo"
-                    name="mediaFileId"
-                    defaultValue={coverMediaId || ""}
-                    options={[
-                      { label: "Auto choose best photo", value: "" },
-                      ...coverMediaOptions.map((media) => ({ label: media.fileName, value: media.id }))
-                    ]}
-                  />
-                  <button type="submit" className="inline-flex w-fit items-center gap-2 rounded-md bg-ink px-5 py-3 text-sm font-semibold text-ivory transition hover:bg-rust">
-                    <Save size={17} />
-                    Save Cover Photo
-                  </button>
-                </form>
-              </>
+              <CoverPhotoEditor
+                clientId={client.id}
+                eventId={primaryEvent.id}
+                eventSlug={primaryEvent.slug}
+                mediaOptions={coverMediaOptions}
+                initialMediaId={currentCoverMedia?.id || ""}
+                initialPositionX={cover.positionX}
+                initialPositionY={cover.positionY}
+              />
             )}
           </div>
 

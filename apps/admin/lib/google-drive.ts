@@ -3,6 +3,7 @@ import { DriveAccountStatus, MediaType, PreviewStatus } from "@prisma/client";
 import { google } from "googleapis";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { eventCoverKey, parseEventCover } from "@/lib/event-cover";
 import { generateSlug } from "@/lib/slug";
 
 const DRIVE_SCOPES = [
@@ -454,6 +455,18 @@ export async function syncEventGalleryFromDrive(eventId: string) {
     throw new Error("Save the event folder ID first.");
   }
 
+  const coverSetting = await prisma.settings.findUnique({
+    where: { key: eventCoverKey(event.id) },
+    select: { value: true }
+  });
+  const currentCover = parseEventCover(coverSetting?.value);
+  const currentCoverMedia = currentCover.mediaFileId
+    ? await prisma.mediaFile.findFirst({
+        where: { id: currentCover.mediaFileId, eventId: event.id },
+        select: { id: true, fileName: true }
+      })
+    : null;
+
   const items = await listFiles(event.driveAccountId, event.driveFolderId);
   const folders = items.filter((item) => isFolder(item) && item.id && item.name);
   const usedSlugs = new Set(event.albums.map((album) => album.slug));
@@ -505,18 +518,69 @@ export async function syncEventGalleryFromDrive(eventId: string) {
   }
 
   const importedRootFiles = await importFilesFromFolder(event.driveAccountId, event.id, null, event.driveFolderId);
-  let importedMediaCount = importedRootFiles.length;
+  const importedMedia = [...importedRootFiles];
 
   for (const album of syncedAlbums) {
     const importedFiles = await importFilesFromFolder(event.driveAccountId, event.id, album.id, album.driveFolderId);
-    importedMediaCount += importedFiles.length;
+    importedMedia.push(...importedFiles);
+  }
+
+  const importedIds = importedMedia.map((media) => media.id);
+  const staleMediaWhere = importedIds.length > 0
+    ? { eventId: event.id, id: { notIn: importedIds } }
+    : { eventId: event.id };
+  const staleMedia = await prisma.mediaFile.findMany({
+    where: staleMediaWhere,
+    select: { id: true }
+  });
+
+  if (staleMedia.length > 0) {
+    await prisma.mediaFile.deleteMany({ where: { id: { in: staleMedia.map((media) => media.id) } } });
+  }
+
+  const retriedPreviews = await prisma.mediaFile.updateMany({
+    where: {
+      id: { in: importedIds },
+      previewStatus: PreviewStatus.FAILED
+    },
+    data: {
+      previewStatus: PreviewStatus.PENDING,
+      previewError: null
+    }
+  });
+
+  if (currentCoverMedia && !importedIds.includes(currentCoverMedia.id)) {
+    const replacement = importedMedia.find((media) => media.fileName === currentCoverMedia.fileName);
+
+    if (replacement) {
+      await prisma.settings.upsert({
+        where: { key: eventCoverKey(event.id) },
+        update: { value: { ...currentCover, mediaFileId: replacement.id } },
+        create: { key: eventCoverKey(event.id), value: { ...currentCover, mediaFileId: replacement.id } }
+      });
+    } else {
+      await prisma.settings.deleteMany({ where: { key: eventCoverKey(event.id) } });
+    }
+  }
+
+  const syncedFolderIds = new Set(syncedAlbums.map((album) => album.driveFolderId));
+  const obsoleteAlbumIds = event.albums
+    .filter((album) => album.driveFolderId && !syncedFolderIds.has(album.driveFolderId))
+    .map((album) => album.id);
+
+  if (obsoleteAlbumIds.length > 0) {
+    await prisma.album.deleteMany({
+      where: { id: { in: obsoleteAlbumIds }, mediaFiles: { none: {} } }
+    });
   }
 
   return {
     albumCount: syncedAlbums.length,
-    mediaCount: importedMediaCount,
+    mediaCount: importedMedia.length,
     rootFilesCount: importedRootFiles.length,
-    hasVisibleMedia: items.some((item) => isMediaFile(item))
+    hasVisibleMedia: items.some((item) => isMediaFile(item)),
+    removedMediaCount: staleMedia.length,
+    retriedPreviewCount: retriedPreviews.count
   };
 }
 
